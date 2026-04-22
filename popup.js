@@ -9,6 +9,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const sortSelect = document.getElementById('sortSelect');
   const problemList = document.getElementById('problemList');
   
+  // Notes View Elements
+  const notesView = document.getElementById('notesView');
+  const notesProblemTitle = document.getElementById('notesProblemTitle');
+  const notesContent = document.getElementById('notesContent');
+  const backFromNotesBtn = document.getElementById('backFromNotesBtn');
+  
   const ghTokenInput = document.getElementById('ghToken');
   const ghRepoInput = document.getElementById('ghRepo');
   const ghBranchInput = document.getElementById('ghBranch');
@@ -49,6 +55,11 @@ document.addEventListener('DOMContentLoaded', () => {
     settingsView.classList.remove('active');
     homepageView.classList.add('active');
     settingsStatus.textContent = '';
+  });
+
+  backFromNotesBtn.addEventListener('click', () => {
+    notesView.classList.remove('active');
+    homepageView.classList.add('active');
   });
 
   // Settings logic
@@ -197,14 +208,12 @@ document.addEventListener('DOMContentLoaded', () => {
       div.className = 'problem-item';
       
       const date = new Date(p.solved_at).toLocaleDateString();
-      const notesSnippet = p.notes ? p.notes : 'No notes added.';
       
       div.innerHTML = `
         <div class="problem-header">
           <div class="problem-title">${p.number}. ${p.title}</div>
           <div class="difficulty diff-${p.difficulty}">${p.difficulty}</div>
         </div>
-        <div class="problem-notes">${notesSnippet}</div>
         <div class="problem-actions">
           <span>${date}</span>
           <div class="actions-right">
@@ -213,6 +222,20 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
       `;
+      
+      // View Notes logic
+      div.addEventListener('click', (e) => {
+        // Prevent opening notes if user clicks a button/link inside
+        if (e.target.closest('a') || e.target.closest('.trash-btn')) {
+          return;
+        }
+        
+        notesProblemTitle.textContent = `${p.number}. ${p.title}`;
+        notesContent.textContent = p.notes ? p.notes : 'No notes added for this problem.';
+        
+        homepageView.classList.remove('active');
+        notesView.classList.add('active');
+      });
       
       // Bind delete button
       const trashBtn = div.querySelector('.trash-btn');
