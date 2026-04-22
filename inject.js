@@ -1,6 +1,8 @@
 // LeetCode -> GitHub Sync Inject Script (MAIN World)
 console.log("LC-GH-Sync: Injecting network interceptors (MAIN world)...");
 
+let isSubmitPhase = false;
+
 function saveCode(lang, code) {
   if (lang) window.sessionStorage.setItem('lc_gh_last_lang', lang);
   if (code) window.sessionStorage.setItem('lc_gh_last_code', code);
@@ -23,6 +25,7 @@ window.fetch = async function(...args) {
   if (typeof url === 'string') {
     // REST Submit
     if (url.includes('/submit/')) {
+      isSubmitPhase = true;
       try {
         window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
         const options = args[1];
@@ -31,6 +34,8 @@ window.fetch = async function(...args) {
           saveCode(body.lang, body.typed_code);
         }
       } catch(e) {}
+    } else if (url.includes('/interpret_solution/') || url.includes('/runcode/')) {
+      isSubmitPhase = false;
     }
     
     // GraphQL Submit
@@ -40,9 +45,12 @@ window.fetch = async function(...args) {
         if (options && options.body) {
           const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
           if (body.operationName === 'submitCode' || body.operationName === 'submit') {
+            isSubmitPhase = true;
             window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
             const vars = body.variables || {};
             saveCode(vars.langSlug || 'unknown', vars.typedCode);
+          } else if (body.operationName === 'interpretSolution' || body.operationName === 'runCode') {
+            isSubmitPhase = false;
           }
         }
       } catch(e) {}
@@ -56,7 +64,9 @@ window.fetch = async function(...args) {
     const clone = response.clone();
     clone.json().then(data => {
       if (data.state === 'SUCCESS' && data.status_msg === 'Accepted') {
-        triggerAccepted();
+        if (isSubmitPhase) {
+          triggerAccepted();
+        }
       }
     }).catch(e => {});
   }
@@ -74,6 +84,7 @@ XMLHttpRequest.prototype.open = function(method, url) {
 
 XMLHttpRequest.prototype.send = function(body) {
   if (this._url && this._url.includes('/submit/')) {
+    isSubmitPhase = true;
     try {
       window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
       if (typeof body === 'string') {
@@ -81,6 +92,8 @@ XMLHttpRequest.prototype.send = function(body) {
         saveCode(parsed.lang, parsed.typed_code);
       }
     } catch(e) {}
+  } else if (this._url && (this._url.includes('/interpret_solution/') || this._url.includes('/runcode/'))) {
+    isSubmitPhase = false;
   }
 
   this.addEventListener('load', function() {
@@ -88,7 +101,9 @@ XMLHttpRequest.prototype.send = function(body) {
       try {
         const data = JSON.parse(this.responseText);
         if (data.state === 'SUCCESS' && data.status_msg === 'Accepted') {
-          triggerAccepted();
+          if (isSubmitPhase) {
+            triggerAccepted();
+          }
         }
       } catch(e) {}
     }
