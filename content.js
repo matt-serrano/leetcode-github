@@ -168,7 +168,7 @@ window.addEventListener('lc_gh_accepted', async (e) => {
   const { lang, code } = e.detail;
   if (!lang || !code) return;
 
-  const match = window.location.pathname.match(/\\/problems\\/([^\\/]+)/);
+  const match = window.location.pathname.match(/\/problems\/([^\/]+)/);
   if (!match) return;
   const slug = match[1];
 
@@ -190,11 +190,11 @@ window.addEventListener('lc_gh_accepted', async (e) => {
 
 function showModal(data) {
   createModal();
-  document.getElementById('lc-gh-title').textContent = \`\${data.number}. \${data.title}\`;
+  document.getElementById('lc-gh-title').textContent = `${data.number}. ${data.title}`;
   
   const diffEl = document.getElementById('lc-gh-difficulty');
   diffEl.textContent = data.difficulty;
-  diffEl.className = \`lc-gh-tag lc-gh-tag-\${data.difficulty}\`;
+  diffEl.className = `lc-gh-tag lc-gh-tag-${data.difficulty}`;
   
   document.getElementById('lc-gh-date').textContent = new Date(data.date).toLocaleDateString();
   
