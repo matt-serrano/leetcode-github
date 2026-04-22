@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const notesContent = document.getElementById('notesContent');
   const backFromNotesBtn = document.getElementById('backFromNotesBtn');
   
+  const codeContainer = document.getElementById('codeContainer');
+  const codeLanguage = document.getElementById('codeLanguage');
+  const codeBlock = document.getElementById('codeBlock');
+  
   const ghTokenInput = document.getElementById('ghToken');
   const ghRepoInput = document.getElementById('ghRepo');
   const ghBranchInput = document.getElementById('ghBranch');
@@ -174,23 +178,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const sortBy = sortSelect.value;
 
     // Filter
-    let filtered = problems.filter(p => {
+    let filtered = problems.map(p => {
       const title = (p.title || '').toLowerCase();
       const num = (p.number || '').toString();
-      return title.includes(searchTerm) || num.includes(searchTerm);
-    });
+      
+      let score = -1;
+      if (searchTerm) {
+        if (num === searchTerm) score = 100;
+        else if (title === searchTerm) score = 50;
+        else if (title.startsWith(searchTerm)) score = 30;
+        else if (num.startsWith(searchTerm)) score = 10;
+        else if (title.includes(searchTerm)) score = 0;
+      } else {
+        score = 0; // Everything passes if no search term
+      }
+      
+      return { problem: p, score: score };
+    }).filter(item => item.score >= 0);
 
     // Sort
     filtered.sort((a, b) => {
+      // If searching, relevance overrides other sorts
+      if (searchTerm && a.score !== b.score) {
+        return b.score - a.score;
+      }
+      
+      // Fallback to dropdown sort
+      const pA = a.problem;
+      const pB = b.problem;
       if (sortBy === 'dateDesc') {
-        return new Date(b.solved_at) - new Date(a.solved_at);
+        return new Date(pB.solved_at) - new Date(pA.solved_at);
       } else if (sortBy === 'dateAsc') {
-        return new Date(a.solved_at) - new Date(b.solved_at);
+        return new Date(pA.solved_at) - new Date(pB.solved_at);
       } else if (sortBy === 'difficulty') {
         const order = { 'Easy': 1, 'Medium': 2, 'Hard': 3 };
-        return (order[a.difficulty] || 0) - (order[b.difficulty] || 0);
+        return (order[pA.difficulty] || 0) - (order[pB.difficulty] || 0);
       } else if (sortBy === 'number') {
-        return parseInt(a.number) - parseInt(b.number);
+        return parseInt(pA.number) - parseInt(pB.number);
       }
       return 0;
     });
@@ -203,7 +227,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    filtered.forEach(p => {
+    filtered.forEach(item => {
+      const p = item.problem;
       const div = document.createElement('div');
       div.className = 'problem-item';
       
@@ -223,8 +248,8 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
       
-      // View Notes logic
-      div.addEventListener('click', (e) => {
+      // View Notes & Code logic
+      div.addEventListener('click', async (e) => {
         // Prevent opening notes if user clicks a button/link inside
         if (e.target.closest('a') || e.target.closest('.trash-btn')) {
           return;
@@ -233,8 +258,76 @@ document.addEventListener('DOMContentLoaded', () => {
         notesProblemTitle.textContent = `${p.number}. ${p.title}`;
         notesContent.textContent = p.notes ? p.notes : 'No notes added for this problem.';
         
+        codeContainer.style.display = 'block';
+        codeLanguage.textContent = 'FETCHING...';
+        codeBlock.textContent = 'Loading code from GitHub...';
+        
         homepageView.classList.remove('active');
         notesView.classList.add('active');
+
+        // Fetch settings
+        const data = await chrome.storage.local.get(['settings']);
+        if (!data.settings || !data.settings.token || !data.settings.repo) {
+          codeBlock.textContent = 'GitHub settings not configured. Cannot fetch code.';
+          codeLanguage.textContent = 'ERROR';
+          return;
+        }
+
+        let { token, repo, branch = 'main' } = data.settings;
+        repo = repo.replace('https://github.com/', '').replace('http://github.com/', '').replace(/\.git$/, '').replace(/\/$/, '').trim();
+        
+        const folderName = `problems/${p.number}-${p.slug}`;
+
+        try {
+          const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${branch}`, {
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+          });
+          
+          if (!res.ok) {
+            if (res.status === 404) {
+              codeBlock.textContent = 'Code not found on GitHub. The repository folder may have been deleted or the branch is incorrect.';
+              codeLanguage.textContent = '404';
+              return;
+            }
+            throw new Error(`HTTP ${res.status}`);
+          }
+
+          const files = await res.json();
+          const solutionFiles = files.filter(f => f.name.startsWith('solution') && f.name.match(/\.[a-zA-Z0-9]+$/));
+
+          if (solutionFiles.length === 0) {
+            codeBlock.textContent = 'No solution files found in this directory.';
+            codeLanguage.textContent = 'ERROR';
+            return;
+          }
+
+          // Sort to find the latest
+          solutionFiles.sort((a, b) => {
+            if (a.name.length !== b.name.length) return b.name.length - a.name.length;
+            return b.name.localeCompare(a.name);
+          });
+          const latestFile = solutionFiles[0];
+          
+          const ext = latestFile.name.split('.').pop();
+          codeLanguage.textContent = ext;
+
+          // Fetch file content
+          const fileRes = await fetch(latestFile.url, {
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+          });
+          
+          if (!fileRes.ok) throw new Error(`HTTP ${fileRes.status}`);
+          
+          const fileData = await fileRes.json();
+          const cleanB64 = fileData.content.replace(/\n/g, '');
+          const decodedCode = decodeURIComponent(escape(atob(cleanB64)));
+          
+          codeBlock.textContent = decodedCode;
+
+        } catch (err) {
+          codeBlock.textContent = `Error fetching GitHub data: ${err.message}`;
+          codeLanguage.textContent = 'ERROR';
+        }
       });
       
       // Bind delete button
