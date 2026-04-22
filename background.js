@@ -36,7 +36,14 @@ async function handleCommit(data) {
       return { success: false, error: 'GitHub Token or Repo not configured.' };
     }
 
-    const { token, repo, branch = 'main' } = settings;
+    let { token, repo, branch = 'main' } = settings;
+    // Sanitize repo string in case user pasted the full URL or .git
+    repo = repo.replace('https://github.com/', '')
+               .replace('http://github.com/', '')
+               .replace(/\.git$/, '')
+               .replace(/\/$/, '')
+               .trim();
+    
     const { lang, code, slug, title, number, difficulty, date, notes } = data;
     
     const ext = LANG_TO_EXT[lang] || 'txt';
@@ -79,7 +86,16 @@ async function handleCommit(data) {
     // 3. GitHub Git Database API (Tree/Commits) to commit all files at once
     
     // a. Get Ref (to get current commit SHA)
-    const refData = await fetchGitHubAPI(`/repos/${repo}/git/ref/heads/${branch}`, token);
+    let refData;
+    try {
+      refData = await fetchGitHubAPI(`/repos/${repo}/git/ref/heads/${branch}`, token);
+    } catch (err) {
+      if (err.message.includes('404')) {
+        throw new Error(`Branch '${branch}' not found in '${repo}'. Ensure the repo is not completely empty (add a README) and branch is correct.`);
+      }
+      throw err;
+    }
+    
     if (!refData || !refData.object) {
       throw new Error(`Branch ${branch} not found.`);
     }

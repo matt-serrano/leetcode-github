@@ -1,49 +1,53 @@
 // LeetCode -> GitHub Sync Content Script
 
-// 1. Inject fetch interceptor to capture submission code and "Accepted" status
-const script = document.createElement('script');
-script.textContent = `
-  const originalFetch = window.fetch;
-  window.fetch = async function(...args) {
-    const url = args[0] instanceof Request ? args[0].url : args[0];
-    
-    // Intercept submission POST to grab code and language
-    if (url.includes('/submit/')) {
-      try {
-        const options = args[1];
-        if (options && options.body) {
-          const body = JSON.parse(options.body);
-          if (body.lang && body.typed_code) {
-            window.sessionStorage.setItem('lc_gh_last_lang', body.lang);
-            window.sessionStorage.setItem('lc_gh_last_code', body.typed_code);
-          }
-        }
-      } catch(e) { console.error("LC-GH-Sync: Error parsing submit body", e); }
-    }
-    
-    const response = await originalFetch.apply(this, args);
-    
-    // Intercept submission check GET to detect "Accepted"
-    if (url.includes('/check/')) {
-      const clone = response.clone();
-      clone.json().then(data => {
-        if (data.state === 'SUCCESS' && data.status_msg === 'Accepted') {
-          window.dispatchEvent(new CustomEvent('lc_gh_accepted', {
-            detail: {
-              lang: window.sessionStorage.getItem('lc_gh_last_lang'),
-              code: window.sessionStorage.getItem('lc_gh_last_code')
-            }
-          }));
-        }
-      }).catch(e => {});
-    }
-    return response;
-  };
-`;
-document.documentElement.appendChild(script);
-script.remove();
+// Network interceptors have been moved to inject.js (MAIN world) to bypass CSP
 
-// 2. Fetch Problem Details via GraphQL
+// 2. DOM MutationObserver Fallback for "Accepted"
+let acceptedFired = false;
+
+window.addEventListener('lc_gh_submit_start', () => {
+  acceptedFired = false;
+});
+
+const observer = new MutationObserver((mutations) => {
+  if (acceptedFired) return;
+  for (const m of mutations) {
+    if (m.addedNodes.length > 0 || m.type === 'characterData') {
+      // Look for the success text in the submission panel
+      const successElements = document.querySelectorAll('[data-e2e-locator="submission-result"], .text-success, .text-green-s');
+      for (const el of successElements) {
+        if (el.textContent.includes('Accepted')) {
+          acceptedFired = true;
+          console.log("LC-GH-Sync: Detected 'Accepted' via DOM observer");
+          // Give network interceptor a chance to fire first
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('lc_gh_accepted', {
+              detail: {
+                lang: window.sessionStorage.getItem('lc_gh_last_lang'),
+                code: window.sessionStorage.getItem('lc_gh_last_code')
+              }
+            }));
+          }, 500);
+          
+          return;
+        }
+      }
+    }
+  }
+});
+observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
+
+// 3. Fallback Code Extractor
+function extractCodeFromDOM() {
+  const lines = document.querySelectorAll('.view-lines .view-line');
+  if (lines.length > 0) {
+    return Array.from(lines).map(line => line.textContent.replace(/\u00a0/g, ' ')).join('\n');
+  }
+  return null;
+}
+
+// 4. Fetch Problem Details
 async function fetchProblemDetails(slug) {
   const query = `
     query questionTitle($titleSlug: String!) {
@@ -61,14 +65,14 @@ async function fetchProblemDetails(slug) {
       body: JSON.stringify({ query, variables: { titleSlug: slug } })
     });
     const data = await res.json();
-    return data.data.question; // { questionFrontendId, title, difficulty }
+    return data.data.question; 
   } catch (e) {
     console.error("LC-GH-Sync: Error fetching problem details", e);
     return null;
   }
 }
 
-// 3. Inject Modal UI into page
+// 5. Inject Modal UI into page
 let modalContainer = null;
 
 function createModal() {
@@ -83,9 +87,9 @@ function createModal() {
       </div>
       <div class="lc-gh-body">
         <div class="lc-gh-meta">
-          <div class="lc-gh-title" id="lc-gh-title">1. Two Sum</div>
+          <div class="lc-gh-title" id="lc-gh-title">Loading...</div>
           <div class="lc-gh-tags">
-            <span class="lc-gh-tag" id="lc-gh-difficulty">Easy</span>
+            <span class="lc-gh-tag" id="lc-gh-difficulty">--</span>
             <span class="lc-gh-tag" id="lc-gh-date"></span>
           </div>
         </div>
@@ -138,7 +142,6 @@ function createModal() {
 
     const notes = notesArea.value.trim();
     
-    // Send message to background script
     chrome.runtime.sendMessage({
       type: 'COMMIT_SOLUTION',
       payload: { ...currentSubmissionData, notes }
@@ -158,22 +161,37 @@ function createModal() {
 }
 
 let currentSubmissionData = null;
+let modalOpenTime = 0;
 
-// 4. Handle "Accepted" event
 window.addEventListener('lc_gh_accepted', async (e) => {
-  // Check if detection is enabled
-  const data = await chrome.storage.local.get(['detectionEnabled']);
-  if (data.detectionEnabled === false) return; // Enabled by default if undefined
+  // Prevent duplicate modals if fired multiple times (e.g., from network + DOM fallback)
+  if (Date.now() - modalOpenTime < 5000) return;
 
-  const { lang, code } = e.detail;
-  if (!lang || !code) return;
+  const data = await chrome.storage.local.get(['detectionEnabled']);
+  if (data.detectionEnabled === false) return;
+
+  let { lang, code } = e.detail || {};
+  
+  // Fallbacks
+  if (!code || code === 'undefined') code = extractCodeFromDOM();
+  if (!lang || lang === 'undefined') lang = 'python3'; // safe fallback
+  if (!code) {
+    console.error("LC-GH-Sync: Could not extract code.");
+    return;
+  }
 
   const match = window.location.pathname.match(/\/problems\/([^\/]+)/);
   if (!match) return;
   const slug = match[1];
 
-  const problemDetails = await fetchProblemDetails(slug);
-  if (!problemDetails) return;
+  let problemDetails = await fetchProblemDetails(slug);
+  if (!problemDetails) {
+    problemDetails = {
+      title: slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      questionFrontendId: '?',
+      difficulty: 'Unknown'
+    };
+  }
 
   currentSubmissionData = {
     lang,
@@ -185,6 +203,7 @@ window.addEventListener('lc_gh_accepted', async (e) => {
     date: new Date().toISOString()
   };
 
+  modalOpenTime = Date.now();
   showModal(currentSubmissionData);
 });
 
