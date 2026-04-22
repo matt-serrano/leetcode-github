@@ -85,6 +85,74 @@ document.addEventListener('DOMContentLoaded', () => {
   searchInput.addEventListener('input', renderProblems);
   sortSelect.addEventListener('change', renderProblems);
 
+  // Delete Modal Elements
+  const deleteModalView = document.getElementById('deleteModalView');
+  const deleteModalContent = document.getElementById('deleteModalContent');
+  const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+  const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+  const deleteStatus = document.getElementById('deleteStatus');
+
+  let currentProblemToDelete = null;
+
+  cancelDeleteBtn.addEventListener('click', () => {
+    deleteModalView.classList.remove('active');
+    homepageView.classList.add('active');
+    currentProblemToDelete = null;
+    deleteStatus.textContent = '';
+  });
+
+  confirmDeleteBtn.addEventListener('click', () => {
+    if (!currentProblemToDelete) return;
+
+    confirmDeleteBtn.disabled = true;
+    confirmDeleteBtn.textContent = 'Deleting...';
+    deleteStatus.className = 'settingsStatus';
+    deleteStatus.textContent = '';
+
+    // Find which radio is checked
+    let selectedFile = null;
+    const radios = document.querySelectorAll('input[name="solution-to-delete"]');
+    if (radios.length > 0) {
+      const checked = Array.from(radios).find(r => r.checked);
+      if (checked && checked.value !== 'ALL') {
+        selectedFile = checked.value;
+      }
+    }
+
+    chrome.runtime.sendMessage({
+      type: 'DELETE_SOLUTION',
+      payload: {
+        number: currentProblemToDelete.number,
+        slug: currentProblemToDelete.slug,
+        file: selectedFile
+      }
+    }, (response) => {
+      confirmDeleteBtn.disabled = false;
+      confirmDeleteBtn.textContent = 'Delete';
+
+      if (chrome.runtime.lastError || !response || !response.success) {
+        deleteStatus.className = 'settingsStatus status-error';
+        deleteStatus.textContent = (response && response.error) || 'Failed to delete. Check settings.';
+      } else {
+        deleteStatus.className = 'settingsStatus status-success';
+        deleteStatus.textContent = 'Successfully deleted!';
+        
+        // Remove from UI if the entire folder was deleted
+        if (!selectedFile) {
+          problems = problems.filter(p => p.number !== currentProblemToDelete.number);
+          chrome.storage.local.set({ syncedProblems: problems }, renderProblems);
+        }
+        
+        setTimeout(() => {
+          deleteModalView.classList.remove('active');
+          homepageView.classList.add('active');
+          currentProblemToDelete = null;
+          deleteStatus.textContent = '';
+        }, 1500);
+      }
+    });
+  });
+
   function renderProblems() {
     if (problems.length === 0) {
       problemList.innerHTML = '<div class="empty-state">No problems synced yet. Go solve some on LeetCode!</div>';
@@ -139,9 +207,80 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="problem-notes">${notesSnippet}</div>
         <div class="problem-actions">
           <span>${date}</span>
-          <a href="${p.github_repo_url}" target="_blank">View in Repo</a>
+          <div class="actions-right">
+            <a href="${p.github_repo_url}" target="_blank">View in Repo</a>
+            <button class="trash-btn" title="Delete Problem" data-number="${p.number}">🗑️</button>
+          </div>
         </div>
       `;
+      
+      // Bind delete button
+      const trashBtn = div.querySelector('.trash-btn');
+      trashBtn.addEventListener('click', async () => {
+        currentProblemToDelete = p;
+        
+        // Show loading modal
+        homepageView.classList.remove('active');
+        deleteModalView.classList.add('active');
+        deleteModalContent.innerHTML = '<div class="empty-state">Loading solutions from GitHub...</div>';
+        confirmDeleteBtn.disabled = true;
+        deleteStatus.textContent = '';
+
+        // Fetch settings
+        const data = await chrome.storage.local.get(['settings']);
+        if (!data.settings || !data.settings.token || !data.settings.repo) {
+          deleteModalContent.innerHTML = '<div class="empty-state">GitHub settings not configured.</div>';
+          return;
+        }
+
+        let { token, repo, branch = 'main' } = data.settings;
+        repo = repo.replace('https://github.com/', '').replace('http://github.com/', '').replace(/\.git$/, '').replace(/\/$/, '').trim();
+        
+        const folderName = `problems/${p.number}-${p.slug}`;
+
+        try {
+          const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${branch}`, {
+            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+          });
+          
+          if (!res.ok) {
+            // Might be 404 if it's already deleted
+            if (res.status === 404) {
+              deleteModalContent.innerHTML = '<p>Problem folder not found on GitHub. It may have already been deleted. You can delete it from local storage.</p>';
+              confirmDeleteBtn.disabled = false;
+              return;
+            }
+            throw new Error(`HTTP ${res.status}`);
+          }
+
+          const files = await res.json();
+          const solutionFiles = files.filter(f => f.name.startsWith('solution') && f.name.match(/\.[a-zA-Z0-9]+$/));
+
+          if (solutionFiles.length <= 1) {
+            deleteModalContent.innerHTML = '<p>Are you sure you want to completely delete this problem and all its files from GitHub?</p>';
+            confirmDeleteBtn.disabled = false;
+          } else {
+            // Sort to show highest first
+            solutionFiles.sort((a, b) => b.name.localeCompare(a.name));
+            
+            let html = '<p>Select which solution you want to delete:</p><div class="solution-radio-group">';
+            solutionFiles.forEach((file, index) => {
+              html += `
+                <label class="solution-radio-label">
+                  <input type="radio" name="solution-to-delete" value="${file.name}" ${index === 0 ? 'checked' : ''}>
+                  ${file.name}
+                </label>
+              `;
+            });
+            html += '</div>';
+            deleteModalContent.innerHTML = html;
+            confirmDeleteBtn.disabled = false;
+          }
+        } catch (err) {
+          deleteModalContent.innerHTML = `<div class="empty-state">Error fetching GitHub data: ${err.message}</div>`;
+        }
+      });
+
       problemList.appendChild(div);
     });
   }

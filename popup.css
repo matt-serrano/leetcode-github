@@ -281,10 +281,72 @@ button {
   font-size: 13px;
   margin-top: 32px;
 }
-#settingsStatus {
+#settingsStatus, .settingsStatus {
   margin-top: 12px;
   font-size: 13px;
   text-align: center;
 }
 .status-success { color: var(--primary); }
 .status-error { color: #ef4444; }
+
+/* Deletion UI */
+.danger-btn {
+  background: #ef4444;
+}
+.danger-btn:hover {
+  background: #dc2626;
+}
+.danger-btn:disabled {
+  background: #fca5a5;
+  cursor: not-allowed;
+}
+
+.trash-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.trash-btn:hover {
+  color: #ef4444;
+}
+
+.actions-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.solution-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.solution-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  transition: border-color 0.1s;
+}
+
+.solution-radio-label:hover {
+  border-color: var(--primary);
+}
+
+.solution-radio-label input {
+  margin: 0;
+}

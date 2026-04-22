@@ -26,8 +26,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'COMMIT_SOLUTION') {
     handleCommit(message.payload).then(sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.type === 'DELETE_SOLUTION') {
+    handleDeleteSolution(message.payload).then(sendResponse);
+    return true;
   }
 });
+
 
 async function handleCommit(data) {
   try {
@@ -190,4 +194,123 @@ async function saveProblemLocally(problemData) {
   }
   
   await chrome.storage.local.set({ syncedProblems: problems });
+}
+
+async function handleDeleteSolution(data) {
+  try {
+    const { settings } = await chrome.storage.local.get(['settings']);
+    if (!settings || !settings.token || !settings.repo) {
+      return { success: false, error: 'GitHub Token or Repo not configured.' };
+    }
+
+    let { token, repo, branch = 'main' } = settings;
+    repo = repo.replace('https://github.com/', '')
+               .replace('http://github.com/', '')
+               .replace(/\.git$/, '')
+               .replace(/\/$/, '')
+               .trim();
+
+    const { number, slug, file } = data;
+    const folderName = `problems/${number}-${slug}`;
+
+    // 1. Get Ref
+    let refData;
+    try {
+      refData = await fetchGitHubAPI(`/repos/${repo}/git/ref/heads/${branch}`, token);
+    } catch (err) {
+      throw new Error(`Branch '${branch}' not found.`);
+    }
+    const currentCommitSha = refData.object.sha;
+
+    // 2. Get Commit
+    const commitData = await fetchGitHubAPI(`/repos/${repo}/git/commits/${currentCommitSha}`, token);
+    const baseTreeSha = commitData.tree.sha;
+
+    // 3. Build Tree Payload
+    const treeItems = [];
+
+    if (!file) {
+      // Entire folder deletion
+      treeItems.push({
+        path: folderName,
+        mode: '040000',
+        type: 'tree',
+        sha: null
+      });
+    } else {
+      // Specific file deletion + renaming shift
+      const existingFiles = await fetchGitHubAPI(`/repos/${repo}/contents/${folderName}?ref=${branch}`, token);
+      if (!Array.isArray(existingFiles)) throw new Error("Folder not found.");
+      
+      const solutionFiles = existingFiles.filter(f => f.name.startsWith('solution') && f.name.match(/\.[a-zA-Z0-9]+$/));
+      
+      solutionFiles.sort((a, b) => {
+        if (a.name.length !== b.name.length) return a.name.length - b.name.length;
+        return a.name.localeCompare(b.name);
+      });
+
+      const deletedIndex = solutionFiles.findIndex(f => f.name === file);
+      if (deletedIndex === -1) throw new Error("File not found to delete.");
+      
+      let lastPathToRemove = null;
+
+      for (let i = deletedIndex; i < solutionFiles.length; i++) {
+        if (i === solutionFiles.length - 1) {
+          lastPathToRemove = `${folderName}/${solutionFiles[i].name}`;
+        } else {
+          const currentFileName = solutionFiles[i].name;
+          const nextFile = solutionFiles[i+1];
+          const getBaseName = (idx) => idx === 0 ? 'solution' : `solution_${idx+1}`;
+          
+          const newExt = nextFile.name.split('.').pop();
+          const targetName = `${getBaseName(i)}.${newExt}`;
+          
+          treeItems.push({
+            path: `${folderName}/${targetName}`,
+            mode: '100644',
+            type: 'blob',
+            sha: nextFile.sha
+          });
+          
+          if (targetName !== currentFileName) {
+             treeItems.push({
+               path: `${folderName}/${currentFileName}`,
+               sha: null
+             });
+          }
+        }
+      }
+      
+      if (lastPathToRemove) {
+        treeItems.push({
+          path: lastPathToRemove,
+          sha: null
+        });
+      }
+    }
+
+    const treePayload = {
+      base_tree: baseTreeSha,
+      tree: treeItems
+    };
+    
+    // 4. Create Tree
+    const newTreeData = await fetchGitHubAPI(`/repos/${repo}/git/trees`, token, 'POST', treePayload);
+    
+    // 5. Create Commit
+    const commitPayload = {
+      message: `Delete solution from LeetCode: ${number}. ${slug}`,
+      tree: newTreeData.sha,
+      parents: [currentCommitSha]
+    };
+    const newCommitData = await fetchGitHubAPI(`/repos/${repo}/git/commits`, token, 'POST', commitPayload);
+
+    // 6. Update Ref
+    await fetchGitHubAPI(`/repos/${repo}/git/refs/heads/${branch}`, token, 'PATCH', { sha: newCommitData.sha });
+
+    return { success: true };
+  } catch (error) {
+    console.error("LC-GH-Sync Delete Error:", error);
+    return { success: false, error: error.message };
+  }
 }

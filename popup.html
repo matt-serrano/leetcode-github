@@ -56,6 +56,18 @@
     <div id="settingsStatus"></div>
   </div>
 
+  <div id="deleteModalView" class="view">
+    <h2>Delete Solution</h2>
+    <div id="deleteModalContent">
+      <div class="empty-state">Loading solutions from GitHub...</div>
+    </div>
+    <div class="settings-actions">
+      <button id="confirmDeleteBtn" class="primary-btn danger-btn" disabled>Delete</button>
+      <button id="cancelDeleteBtn" class="secondary-btn">Cancel</button>
+    </div>
+    <div id="deleteStatus" class="settingsStatus"></div>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
