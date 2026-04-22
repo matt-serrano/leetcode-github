@@ -1,0 +1,188 @@
+/* Injected UI Modal for LeetCode -> GitHub Sync */
+
+#lc-gh-sync-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 9999999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+#lc-gh-sync-overlay.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+#lc-gh-sync-modal {
+  width: 400px;
+  background: var(--lc-gh-bg, #ffffff);
+  color: var(--lc-gh-text, #1f2937);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transform: translateY(20px);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+#lc-gh-sync-overlay.visible #lc-gh-sync-modal {
+  transform: translateY(0);
+}
+
+/* Dark mode overrides, default to dark if LeetCode is dark */
+@media (prefers-color-scheme: dark) {
+  #lc-gh-sync-modal {
+    --lc-gh-bg: #1e293b;
+    --lc-gh-text: #f8fafc;
+    --lc-gh-border: #334155;
+    --lc-gh-input-bg: #0f172a;
+    --lc-gh-muted: #94a3b8;
+  }
+}
+@media (prefers-color-scheme: light) {
+  #lc-gh-sync-modal {
+    --lc-gh-bg: #ffffff;
+    --lc-gh-text: #1f2937;
+    --lc-gh-border: #e2e8f0;
+    --lc-gh-input-bg: #f1f5f9;
+    --lc-gh-muted: #64748b;
+  }
+}
+
+.lc-gh-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--lc-gh-border, #e2e8f0);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--lc-gh-bg);
+}
+
+.lc-gh-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #10b981; /* Success green */
+}
+
+.lc-gh-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--lc-gh-muted, #64748b);
+  padding: 0;
+}
+
+.lc-gh-close:hover {
+  color: var(--lc-gh-text, #1f2937);
+}
+
+.lc-gh-body {
+  padding: 20px;
+}
+
+.lc-gh-meta {
+  margin-bottom: 16px;
+}
+
+.lc-gh-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.lc-gh-tags {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lc-gh-tag {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--lc-gh-input-bg, #f1f5f9);
+}
+
+.lc-gh-tag-Easy { color: #16a34a; }
+.lc-gh-tag-Medium { color: #d97706; }
+.lc-gh-tag-Hard { color: #dc2626; }
+
+.lc-gh-notes-container textarea {
+  width: 100%;
+  box-sizing: border-box;
+  height: 100px;
+  padding: 12px;
+  border: 1px solid var(--lc-gh-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--lc-gh-input-bg, #f1f5f9);
+  color: var(--lc-gh-text, #1f2937);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+}
+
+.lc-gh-notes-container textarea:focus {
+  border-color: #10b981;
+}
+
+.lc-gh-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--lc-gh-border, #e2e8f0);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.lc-gh-btn {
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.lc-gh-btn-cancel {
+  background: transparent;
+  color: var(--lc-gh-muted, #64748b);
+}
+
+.lc-gh-btn-cancel:hover {
+  background: var(--lc-gh-input-bg, #f1f5f9);
+  color: var(--lc-gh-text, #1f2937);
+}
+
+.lc-gh-btn-commit {
+  background: #10b981;
+  color: white;
+}
+
+.lc-gh-btn-commit:hover {
+  background: #059669;
+}
+
+.lc-gh-btn-commit:disabled {
+  background: var(--lc-gh-muted, #64748b);
+  cursor: not-allowed;
+}
+
+.lc-gh-status {
+  margin-top: 12px;
+  font-size: 13px;
+  text-align: center;
+  display: none;
+}
+.lc-gh-status.success { color: #10b981; display: block; }
+.lc-gh-status.error { color: #ef4444; display: block; }

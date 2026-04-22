@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode \u2192 GitHub Sync",
+  "version": "1.0.0",
+  "description": "Automatically detect successful LeetCode submissions and commit them to GitHub.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://leetcode.com/*",
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://leetcode.com/problems/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LeetCode \u2192 GitHub Sync"
+  }
+}
