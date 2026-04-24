@@ -189,11 +189,12 @@ input:checked + .slider:before {
 #homepageView {
   position: absolute;
   isolation: isolate;
-  padding: 0;
 }
 
 #homepageView.active {
-  display: block;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  row-gap: 20px;
   overflow: hidden;
 }
 
@@ -245,12 +246,9 @@ input:checked + .slider:before {
 }
 
 #homepageView > .toolbar {
-  position: fixed;
-  top: calc(var(--header-height) + 16px);
-  right: 16px;
-  left: 16px;
+  position: relative;
   margin-bottom: 0;
-  z-index: 18;
+  z-index: 3;
 }
 
 .toolbar input, .toolbar select {
@@ -298,14 +296,10 @@ button:focus-visible {
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  position: fixed;
-  top: calc(var(--header-height) + 76px);
-  right: 16px;
-  bottom: 16px;
-  left: 16px;
+  position: relative;
   overflow-y: auto;
   padding: 4px 8px 4px 0;
-  z-index: 17;
+  z-index: 1;
   overscroll-behavior: contain;
 }
 
