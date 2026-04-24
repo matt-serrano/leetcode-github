@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="CodeNebula icon">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d0a14"/>
+      <stop offset="1" stop-color="#3b1f5a"/>
+    </linearGradient>
+    <radialGradient id="nebula" cx="50%" cy="48%" r="45%">
+      <stop stop-color="#a78bfa" stop-opacity="0.9"/>
+      <stop offset="0.55" stop-color="#7c3aed" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#7c3aed" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <ellipse cx="64" cy="58" rx="43" ry="28" fill="url(#nebula)"/>
+  <circle cx="64" cy="62" r="17" fill="#c4b5fd"/>
+  <path d="M32 64c15-12 49-16 72-6" fill="none" stroke="#f0abfc" stroke-width="6" stroke-linecap="round"/>
+  <path d="M26 68c21 13 55 15 78 4" fill="none" stroke="#f0abfc" stroke-width="5" stroke-linecap="round" opacity="0.78"/>
+  <circle cx="31" cy="30" r="4" fill="#facc15"/>
+  <circle cx="92" cy="29" r="3" fill="#f4efff"/>
+  <circle cx="35" cy="93" r="2.5" fill="#f4efff"/>
+  <circle cx="99" cy="91" r="4" fill="#facc15"/>
+</svg>

@@ -461,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
         notesProblemTitle.textContent = `${p.number}. ${p.title}`;
         notesContent.textContent = p.notes ? p.notes : 'No notes added for this problem.';
         
-        codeContainer.style.display = 'block';
+        codeContainer.style.display = 'flex';
         codeLanguage.textContent = 'FETCHING...';
         showCodeMessage('Loading code from GitHub...');
         resetCodeScroll();
