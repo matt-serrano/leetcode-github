@@ -166,6 +166,29 @@ input:checked + .slider:before {
 .problem-title {
   font-weight: 600;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.difficulty-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.dot-Easy {
+  background: #22c55e;
+}
+
+.dot-Medium {
+  background: #eab308;
+}
+
+.dot-Hard {
+  background: #ef4444;
 }
 
 .difficulty {
@@ -267,6 +290,17 @@ button {
 
 .secondary-btn:hover {
   background: var(--border);
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .empty-state {
@@ -407,4 +441,34 @@ button {
   font-size: 12px;
   line-height: 1.5;
   tab-size: 4;
+  white-space: pre;
+}
+
+.code-container .code-message {
+  color: #a3a3a3;
+}
+
+.tok-keyword {
+  color: #569cd6;
+}
+
+.tok-string {
+  color: #ce9178;
+}
+
+.tok-number {
+  color: #b5cea8;
+}
+
+.tok-comment {
+  color: #6a9955;
+  font-style: italic;
+}
+
+.tok-operator {
+  color: #d4d4d4;
+}
+
+.tok-bracket {
+  color: #ffd700;
 }

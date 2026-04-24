@@ -28,6 +28,178 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let problems = [];
 
+  function getProblemFolder(problem) {
+    const repoUrlFolder = (problem.github_repo_url || '').match(/\/(problems\/[^/?#]+)/);
+    if (repoUrlFolder) {
+      return decodeURIComponent(repoUrlFolder[1]);
+    }
+
+    if (problem.slug) {
+      return `problems/${problem.number}-${problem.slug}`;
+    }
+
+    const titleSlug = (problem.title || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return `problems/${problem.number}-${titleSlug}`;
+  }
+
+  function getProblemSlug(problem) {
+    if (problem.slug) return problem.slug;
+
+    const folder = getProblemFolder(problem);
+    const prefix = `${problem.number}-`;
+    const folderName = folder.split('/').pop() || '';
+    if (folderName.startsWith(prefix)) {
+      return folderName.slice(prefix.length);
+    }
+
+    return folderName.replace(/^[^-]+-/, '');
+  }
+
+  const LANGUAGE_KEYWORDS = {
+    py: new Set([
+      'and', 'as', 'assert', 'async', 'await', 'break', 'class', 'continue', 'def',
+      'del', 'elif', 'else', 'except', 'False', 'finally', 'for', 'from', 'global',
+      'if', 'import', 'in', 'is', 'lambda', 'None', 'nonlocal', 'not', 'or', 'pass',
+      'raise', 'return', 'True', 'try', 'while', 'with', 'yield', 'self'
+    ]),
+    js: new Set([
+      'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue',
+      'debugger', 'default', 'delete', 'do', 'else', 'export', 'extends', 'false',
+      'finally', 'for', 'from', 'function', 'if', 'import', 'in', 'instanceof',
+      'let', 'new', 'null', 'of', 'return', 'static', 'super', 'switch', 'this',
+      'throw', 'true', 'try', 'typeof', 'undefined', 'var', 'void', 'while', 'yield'
+    ]),
+    ts: new Set([
+      'abstract', 'any', 'as', 'async', 'await', 'boolean', 'break', 'case', 'catch',
+      'class', 'const', 'continue', 'default', 'delete', 'do', 'else', 'enum',
+      'export', 'extends', 'false', 'finally', 'for', 'from', 'function', 'if',
+      'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'null',
+      'number', 'of', 'private', 'protected', 'public', 'readonly', 'return',
+      'static', 'string', 'super', 'switch', 'this', 'throw', 'true', 'try', 'type',
+      'typeof', 'undefined', 'var', 'void', 'while', 'yield'
+    ]),
+    java: new Set([
+      'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char',
+      'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum',
+      'extends', 'false', 'final', 'finally', 'float', 'for', 'if', 'implements',
+      'import', 'instanceof', 'int', 'interface', 'long', 'new', 'null', 'package',
+      'private', 'protected', 'public', 'return', 'short', 'static', 'strictfp',
+      'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient',
+      'true', 'try', 'void', 'volatile', 'while'
+    ]),
+    cpp: new Set([
+      'auto', 'bool', 'break', 'case', 'catch', 'char', 'class', 'const', 'continue',
+      'default', 'delete', 'do', 'double', 'else', 'enum', 'false', 'float', 'for',
+      'if', 'include', 'int', 'long', 'namespace', 'new', 'nullptr', 'private',
+      'protected', 'public', 'return', 'short', 'signed', 'sizeof', 'static',
+      'struct', 'switch', 'template', 'this', 'throw', 'true', 'try', 'typedef',
+      'typename', 'unsigned', 'using', 'vector', 'void', 'while'
+    ]),
+    c: new Set([
+      'auto', 'break', 'case', 'char', 'const', 'continue', 'default', 'do',
+      'double', 'else', 'enum', 'extern', 'float', 'for', 'if', 'include', 'int',
+      'long', 'register', 'return', 'short', 'signed', 'sizeof', 'static', 'struct',
+      'switch', 'typedef', 'union', 'unsigned', 'void', 'volatile', 'while'
+    ]),
+    cs: new Set([
+      'abstract', 'as', 'async', 'await', 'bool', 'break', 'case', 'catch', 'class',
+      'const', 'continue', 'decimal', 'default', 'delegate', 'do', 'double', 'else',
+      'enum', 'event', 'false', 'finally', 'float', 'for', 'foreach', 'if', 'in',
+      'int', 'interface', 'is', 'long', 'namespace', 'new', 'null', 'object',
+      'override', 'private', 'protected', 'public', 'readonly', 'return', 'sealed',
+      'static', 'string', 'struct', 'switch', 'this', 'throw', 'true', 'try',
+      'using', 'var', 'virtual', 'void', 'while'
+    ]),
+    go: new Set([
+      'break', 'case', 'chan', 'const', 'continue', 'default', 'defer', 'else',
+      'fallthrough', 'for', 'func', 'go', 'goto', 'if', 'import', 'interface',
+      'map', 'nil', 'package', 'range', 'return', 'select', 'struct', 'switch',
+      'type', 'var'
+    ]),
+    rb: new Set([
+      'BEGIN', 'END', 'alias', 'and', 'begin', 'break', 'case', 'class', 'def',
+      'defined?', 'do', 'else', 'elsif', 'end', 'ensure', 'false', 'for', 'if',
+      'in', 'module', 'next', 'nil', 'not', 'or', 'redo', 'rescue', 'retry',
+      'return', 'self', 'super', 'then', 'true', 'undef', 'unless', 'until',
+      'when', 'while', 'yield'
+    ]),
+    rs: new Set([
+      'as', 'async', 'await', 'break', 'const', 'continue', 'crate', 'dyn', 'else',
+      'enum', 'extern', 'false', 'fn', 'for', 'if', 'impl', 'in', 'let', 'loop',
+      'match', 'mod', 'move', 'mut', 'pub', 'ref', 'return', 'self', 'Self',
+      'static', 'struct', 'super', 'trait', 'true', 'type', 'unsafe', 'use',
+      'where', 'while'
+    ])
+  };
+
+  function escapeHtml(value) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function getKeywordSet(ext) {
+    if (ext === 'jsx') return LANGUAGE_KEYWORDS.js;
+    if (ext === 'tsx') return LANGUAGE_KEYWORDS.ts;
+    if (ext === 'cc' || ext === 'cxx' || ext === 'h' || ext === 'hpp') return LANGUAGE_KEYWORDS.cpp;
+    return LANGUAGE_KEYWORDS[ext] || LANGUAGE_KEYWORDS.js;
+  }
+
+  function getTokenPattern(ext) {
+    if (ext === 'py' || ext === 'rb') {
+      return /("""[\s\S]*?"""|'''[\s\S]*?'''|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b|[{}()[\].,;:+\-*/%=&|!<>^~?]+)/g;
+    }
+
+    return /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b|[{}()[\].,;:+\-*/%=&|!<>^~?]+)/g;
+  }
+
+  function highlightCode(code, ext) {
+    const keywords = getKeywordSet(ext);
+    const pattern = getTokenPattern(ext);
+    let highlighted = '';
+    let lastIndex = 0;
+
+    code.replace(pattern, (token, _capture, offset) => {
+      highlighted += escapeHtml(code.slice(lastIndex, offset));
+      const escaped = escapeHtml(token);
+
+      if (/^(\/\/|\/\*|#)/.test(token)) {
+        highlighted += `<span class="tok-comment">${escaped}</span>`;
+      } else if (/^(["'`])/.test(token) || token.startsWith('"""') || token.startsWith("'''")) {
+        highlighted += `<span class="tok-string">${escaped}</span>`;
+      } else if (/^\d/.test(token)) {
+        highlighted += `<span class="tok-number">${escaped}</span>`;
+      } else if (keywords.has(token)) {
+        highlighted += `<span class="tok-keyword">${escaped}</span>`;
+      } else if (/^[{}()[\]]+$/.test(token)) {
+        highlighted += `<span class="tok-bracket">${escaped}</span>`;
+      } else if (/^[.,;:+\-*/%=&|!<>^~?]+$/.test(token)) {
+        highlighted += `<span class="tok-operator">${escaped}</span>`;
+      } else {
+        highlighted += escaped;
+      }
+
+      lastIndex = offset + token.length;
+      return token;
+    });
+
+    return highlighted + escapeHtml(code.slice(lastIndex));
+  }
+
+  function showCodeMessage(message) {
+    codeBlock.className = 'code-message';
+    codeBlock.textContent = message;
+  }
+
+  function showHighlightedCode(code, ext) {
+    codeBlock.className = '';
+    codeBlock.innerHTML = highlightCode(code, ext);
+  }
+
   // Load Initial State
   chrome.storage.local.get(['settings', 'detectionEnabled', 'syncedProblems'], (data) => {
     // Toggle
@@ -138,7 +310,8 @@ document.addEventListener('DOMContentLoaded', () => {
       type: 'DELETE_SOLUTION',
       payload: {
         number: currentProblemToDelete.number,
-        slug: currentProblemToDelete.slug,
+        slug: getProblemSlug(currentProblemToDelete),
+        folderName: getProblemFolder(currentProblemToDelete),
         file: selectedFile
       }
     }, (response) => {
@@ -236,7 +409,10 @@ document.addEventListener('DOMContentLoaded', () => {
       
       div.innerHTML = `
         <div class="problem-header">
-          <div class="problem-title">${p.number}. ${p.title}</div>
+          <div class="problem-title">
+            <span class="difficulty-dot dot-${p.difficulty}" aria-hidden="true"></span>
+            <span>${p.number}. ${p.title}</span>
+          </div>
           <div class="difficulty diff-${p.difficulty}">${p.difficulty}</div>
         </div>
         <div class="problem-actions">
@@ -260,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         codeContainer.style.display = 'block';
         codeLanguage.textContent = 'FETCHING...';
-        codeBlock.textContent = 'Loading code from GitHub...';
+        showCodeMessage('Loading code from GitHub...');
         
         homepageView.classList.remove('active');
         notesView.classList.add('active');
@@ -268,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fetch settings
         const data = await chrome.storage.local.get(['settings']);
         if (!data.settings || !data.settings.token || !data.settings.repo) {
-          codeBlock.textContent = 'GitHub settings not configured. Cannot fetch code.';
+          showCodeMessage('GitHub settings not configured. Cannot fetch code.');
           codeLanguage.textContent = 'ERROR';
           return;
         }
@@ -276,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let { token, repo, branch = 'main' } = data.settings;
         repo = repo.replace('https://github.com/', '').replace('http://github.com/', '').replace(/\.git$/, '').replace(/\/$/, '').trim();
         
-        const folderName = `problems/${p.number}-${p.slug}`;
+        const folderName = getProblemFolder(p);
 
         try {
           const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${branch}`, {
@@ -285,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
           
           if (!res.ok) {
             if (res.status === 404) {
-              codeBlock.textContent = 'Code not found on GitHub. The repository folder may have been deleted or the branch is incorrect.';
+              showCodeMessage('Code not found on GitHub. The repository folder may have been deleted or the branch is incorrect.');
               codeLanguage.textContent = '404';
               return;
             }
@@ -296,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const solutionFiles = files.filter(f => f.name.startsWith('solution') && f.name.match(/\.[a-zA-Z0-9]+$/));
 
           if (solutionFiles.length === 0) {
-            codeBlock.textContent = 'No solution files found in this directory.';
+            showCodeMessage('No solution files found in this directory.');
             codeLanguage.textContent = 'ERROR';
             return;
           }
@@ -322,10 +498,10 @@ document.addEventListener('DOMContentLoaded', () => {
           const cleanB64 = fileData.content.replace(/\n/g, '');
           const decodedCode = decodeURIComponent(escape(atob(cleanB64)));
           
-          codeBlock.textContent = decodedCode;
+          showHighlightedCode(decodedCode, ext);
 
         } catch (err) {
-          codeBlock.textContent = `Error fetching GitHub data: ${err.message}`;
+          showCodeMessage(`Error fetching GitHub data: ${err.message}`);
           codeLanguage.textContent = 'ERROR';
         }
       });
@@ -352,7 +528,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let { token, repo, branch = 'main' } = data.settings;
         repo = repo.replace('https://github.com/', '').replace('http://github.com/', '').replace(/\.git$/, '').replace(/\/$/, '').trim();
         
-        const folderName = `problems/${p.number}-${p.slug}`;
+        const folderName = getProblemFolder(p);
 
         try {
           const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${branch}`, {

@@ -134,7 +134,7 @@ async function handleCommit(data) {
 
     // 4. Update local storage with the new synced problem
     await saveProblemLocally({
-      number, title, difficulty, solved_at: date, notes, github_repo_url: metaJson.github_repo_url
+      number, slug, title, difficulty, solved_at: date, notes, github_repo_url: metaJson.github_repo_url
     });
 
     return { success: true };
@@ -183,7 +183,11 @@ async function saveProblemLocally(problemData) {
   const index = problems.findIndex(p => p.number === problemData.number);
   if (index >= 0) {
     // If solved again, maybe append notes or just update date
-    problems[index].solved_at = problemData.solved_at;
+    problems[index] = {
+      ...problems[index],
+      ...problemData,
+      notes: problems[index].notes
+    };
     if (problemData.notes) {
       problems[index].notes = problems[index].notes 
         ? problems[index].notes + "\n---\n" + problemData.notes 
@@ -211,7 +215,7 @@ async function handleDeleteSolution(data) {
                .trim();
 
     const { number, slug, file } = data;
-    const folderName = `problems/${number}-${slug}`;
+    const folderName = data.folderName || `problems/${number}-${slug}`;
 
     // 1. Get Ref
     let refData;
