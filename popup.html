@@ -57,13 +57,21 @@
   </div>
 
   <div id="deleteModalView" class="view">
-    <h2>Delete Solution</h2>
-    <div id="deleteModalContent">
-      <div class="empty-state">Loading solutions from GitHub...</div>
+    <div class="delete-panel">
+      <div class="delete-hero">
+        <div class="delete-icon" aria-hidden="true">!</div>
+        <div>
+          <h2>Delete Solution</h2>
+          <p>Choose what to remove from your GitHub repository.</p>
+        </div>
+      </div>
+      <div id="deleteModalContent">
+        <div class="delete-loading">Loading solutions from GitHub...</div>
+      </div>
     </div>
-    <div class="settings-actions">
-      <button id="confirmDeleteBtn" class="primary-btn danger-btn" disabled>Delete</button>
+    <div class="settings-actions delete-actions">
       <button id="cancelDeleteBtn" class="secondary-btn">Cancel</button>
+      <button id="confirmDeleteBtn" class="primary-btn danger-btn" disabled>Delete</button>
     </div>
     <div id="deleteStatus" class="settingsStatus"></div>
   </div>
@@ -78,7 +86,7 @@
       <div class="code-header">
         <span id="codeLanguage" class="code-language"></span>
       </div>
-      <pre><code id="codeBlock"></code></pre>
+      <pre id="codeScroller"><code id="codeBlock"></code></pre>
     </div>
 
     <div class="notes-header">Notes</div>

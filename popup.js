@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const codeContainer = document.getElementById('codeContainer');
   const codeLanguage = document.getElementById('codeLanguage');
+  const codeScroller = document.getElementById('codeScroller');
   const codeBlock = document.getElementById('codeBlock');
   
   const ghTokenInput = document.getElementById('ghToken');
@@ -136,10 +137,14 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   function escapeHtml(value) {
-    return value
+    return String(value)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/"/g, '&quot;');
   }
 
   function getKeywordSet(ext) {
@@ -198,6 +203,17 @@ document.addEventListener('DOMContentLoaded', () => {
   function showHighlightedCode(code, ext) {
     codeBlock.className = '';
     codeBlock.innerHTML = highlightCode(code, ext);
+    resetCodeScroll();
+  }
+
+  function resetCodeScroll() {
+    notesView.scrollTop = 0;
+    notesView.scrollLeft = 0;
+
+    if (codeScroller) {
+      codeScroller.scrollTop = 0;
+      codeScroller.scrollLeft = 0;
+    }
   }
 
   // Load Initial State
@@ -422,12 +438,23 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="trash-btn" title="Delete Problem" data-number="${p.number}">🗑️</button>
           </div>
         </div>
+        <div class="inline-delete" aria-live="polite">
+          <div class="inline-delete-copy">
+            <strong>Delete this solution?</strong>
+            <span>This removes the saved problem folder from GitHub and your log.</span>
+          </div>
+          <div class="inline-delete-actions">
+            <button class="secondary-btn inline-cancel-btn" type="button">Cancel</button>
+            <button class="danger-btn inline-delete-btn" type="button">Delete</button>
+          </div>
+          <div class="inline-delete-status"></div>
+        </div>
       `;
       
       // View Notes & Code logic
       div.addEventListener('click', async (e) => {
         // Prevent opening notes if user clicks a button/link inside
-        if (e.target.closest('a') || e.target.closest('.trash-btn')) {
+        if (e.target.closest('a') || e.target.closest('.trash-btn') || e.target.closest('.inline-delete')) {
           return;
         }
         
@@ -437,9 +464,11 @@ document.addEventListener('DOMContentLoaded', () => {
         codeContainer.style.display = 'block';
         codeLanguage.textContent = 'FETCHING...';
         showCodeMessage('Loading code from GitHub...');
+        resetCodeScroll();
         
         homepageView.classList.remove('active');
         notesView.classList.add('active');
+        resetCodeScroll();
 
         // Fetch settings
         const data = await chrome.storage.local.get(['settings']);
@@ -508,69 +537,55 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Bind delete button
       const trashBtn = div.querySelector('.trash-btn');
-      trashBtn.addEventListener('click', async () => {
-        currentProblemToDelete = p;
-        
-        // Show loading modal
-        homepageView.classList.remove('active');
-        deleteModalView.classList.add('active');
-        deleteModalContent.innerHTML = '<div class="empty-state">Loading solutions from GitHub...</div>';
-        confirmDeleteBtn.disabled = true;
-        deleteStatus.textContent = '';
+      const inlineDelete = div.querySelector('.inline-delete');
+      const inlineCancelBtn = div.querySelector('.inline-cancel-btn');
+      const inlineDeleteBtn = div.querySelector('.inline-delete-btn');
+      const inlineDeleteStatus = div.querySelector('.inline-delete-status');
 
-        // Fetch settings
-        const data = await chrome.storage.local.get(['settings']);
-        if (!data.settings || !data.settings.token || !data.settings.repo) {
-          deleteModalContent.innerHTML = '<div class="empty-state">GitHub settings not configured.</div>';
-          return;
-        }
+      trashBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.inline-delete.active').forEach(panel => {
+          if (panel !== inlineDelete) panel.classList.remove('active');
+        });
+        inlineDelete.classList.add('active');
+        inlineDeleteStatus.textContent = '';
+        inlineDeleteStatus.className = 'inline-delete-status';
+      });
 
-        let { token, repo, branch = 'main' } = data.settings;
-        repo = repo.replace('https://github.com/', '').replace('http://github.com/', '').replace(/\.git$/, '').replace(/\/$/, '').trim();
-        
-        const folderName = getProblemFolder(p);
+      inlineCancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        inlineDelete.classList.remove('active');
+        inlineDeleteStatus.textContent = '';
+      });
 
-        try {
-          const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${branch}`, {
-            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
-          });
-          
-          if (!res.ok) {
-            // Might be 404 if it's already deleted
-            if (res.status === 404) {
-              deleteModalContent.innerHTML = '<p>Problem folder not found on GitHub. It may have already been deleted. You can delete it from local storage.</p>';
-              confirmDeleteBtn.disabled = false;
-              return;
-            }
-            throw new Error(`HTTP ${res.status}`);
+      inlineDeleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        inlineDeleteBtn.disabled = true;
+        inlineDeleteBtn.textContent = 'Deleting...';
+        inlineDeleteStatus.className = 'inline-delete-status';
+        inlineDeleteStatus.textContent = '';
+
+        chrome.runtime.sendMessage({
+          type: 'DELETE_SOLUTION',
+          payload: {
+            number: p.number,
+            slug: getProblemSlug(p),
+            folderName: getProblemFolder(p),
+            file: null
+          }
+        }, (response) => {
+          inlineDeleteBtn.disabled = false;
+          inlineDeleteBtn.textContent = 'Delete';
+
+          if (chrome.runtime.lastError || !response || !response.success) {
+            inlineDeleteStatus.className = 'inline-delete-status status-error';
+            inlineDeleteStatus.textContent = (response && response.error) || 'Failed to delete. Check settings.';
+            return;
           }
 
-          const files = await res.json();
-          const solutionFiles = files.filter(f => f.name.startsWith('solution') && f.name.match(/\.[a-zA-Z0-9]+$/));
-
-          if (solutionFiles.length <= 1) {
-            deleteModalContent.innerHTML = '<p>Are you sure you want to completely delete this problem and all its files from GitHub?</p>';
-            confirmDeleteBtn.disabled = false;
-          } else {
-            // Sort to show highest first
-            solutionFiles.sort((a, b) => b.name.localeCompare(a.name));
-            
-            let html = '<p>Select which solution you want to delete:</p><div class="solution-radio-group">';
-            solutionFiles.forEach((file, index) => {
-              html += `
-                <label class="solution-radio-label">
-                  <input type="radio" name="solution-to-delete" value="${file.name}" ${index === 0 ? 'checked' : ''}>
-                  ${file.name}
-                </label>
-              `;
-            });
-            html += '</div>';
-            deleteModalContent.innerHTML = html;
-            confirmDeleteBtn.disabled = false;
-          }
-        } catch (err) {
-          deleteModalContent.innerHTML = `<div class="empty-state">Error fetching GitHub data: ${err.message}</div>`;
-        }
+          problems = problems.filter(problem => problem.number !== p.number);
+          chrome.storage.local.set({ syncedProblems: problems }, renderProblems);
+        });
       });
 
       problemList.appendChild(div);
