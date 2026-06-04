@@ -17,6 +17,14 @@ function triggerAccepted() {
   }));
 }
 
+function triggerSubmitStart() {
+  window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
+}
+
+function triggerRunStart() {
+  window.dispatchEvent(new CustomEvent('lc_gh_run_start'));
+}
+
 // --- FETCH INTERCEPTOR ---
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
@@ -27,7 +35,7 @@ window.fetch = async function(...args) {
     if (url.includes('/submit/')) {
       isSubmitPhase = true;
       try {
-        window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
+        triggerSubmitStart();
         const options = args[1];
         if (options && options.body) {
           const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
@@ -36,6 +44,7 @@ window.fetch = async function(...args) {
       } catch(e) {}
     } else if (url.includes('/interpret_solution/') || url.includes('/runcode/')) {
       isSubmitPhase = false;
+      triggerRunStart();
     }
     
     // GraphQL Submit
@@ -46,11 +55,12 @@ window.fetch = async function(...args) {
           const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
           if (body.operationName === 'submitCode' || body.operationName === 'submit') {
             isSubmitPhase = true;
-            window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
+            triggerSubmitStart();
             const vars = body.variables || {};
             saveCode(vars.langSlug || 'unknown', vars.typedCode);
           } else if (body.operationName === 'interpretSolution' || body.operationName === 'runCode') {
             isSubmitPhase = false;
+            triggerRunStart();
           }
         }
       } catch(e) {}
@@ -86,7 +96,7 @@ XMLHttpRequest.prototype.send = function(body) {
   if (this._url && this._url.includes('/submit/')) {
     isSubmitPhase = true;
     try {
-      window.dispatchEvent(new CustomEvent('lc_gh_submit_start'));
+      triggerSubmitStart();
       if (typeof body === 'string') {
         const parsed = JSON.parse(body);
         saveCode(parsed.lang, parsed.typed_code);
@@ -94,6 +104,7 @@ XMLHttpRequest.prototype.send = function(body) {
     } catch(e) {}
   } else if (this._url && (this._url.includes('/interpret_solution/') || this._url.includes('/runcode/'))) {
     isSubmitPhase = false;
+    triggerRunStart();
   }
 
   this.addEventListener('load', function() {

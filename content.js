@@ -4,13 +4,23 @@
 
 // 2. DOM MutationObserver Fallback for "Accepted"
 let acceptedFired = false;
+let submitInProgress = false;
+let lastSubmitStart = 0;
+const SUBMIT_DETECTION_WINDOW_MS = 60000;
 
 window.addEventListener('lc_gh_submit_start', () => {
   acceptedFired = false;
+  submitInProgress = true;
+  lastSubmitStart = Date.now();
+});
+
+window.addEventListener('lc_gh_run_start', () => {
+  submitInProgress = false;
 });
 
 const observer = new MutationObserver((mutations) => {
   if (acceptedFired) return;
+  if (!submitInProgress || Date.now() - lastSubmitStart > SUBMIT_DETECTION_WINDOW_MS) return;
   for (const m of mutations) {
     if (m.addedNodes.length > 0 || m.type === 'characterData') {
       // Look for the success text in the submission panel
@@ -18,6 +28,7 @@ const observer = new MutationObserver((mutations) => {
       for (const el of successElements) {
         if (el.textContent.includes('Accepted')) {
           acceptedFired = true;
+          submitInProgress = false;
           console.log("LC-GH-Sync: Detected 'Accepted' via DOM observer");
           // Give network interceptor a chance to fire first
           setTimeout(() => {
