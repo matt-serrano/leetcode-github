@@ -7,6 +7,8 @@ let acceptedFired = false;
 let submitInProgress = false;
 let lastSubmitStart = 0;
 const SUBMIT_DETECTION_WINDOW_MS = 60000;
+const MAX_CODE_LENGTH = 512 * 1024;
+const SAFE_DIFFICULTIES = new Set(['Easy', 'Medium', 'Hard', 'Unknown']);
 
 window.addEventListener('lc_gh_submit_start', () => {
   acceptedFired = false;
@@ -174,6 +176,15 @@ function createModal() {
 let currentSubmissionData = null;
 let modalOpenTime = 0;
 
+function normalizeEventText(value, maxLength) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text.length <= maxLength ? text : '';
+}
+
+function normalizeDifficulty(value) {
+  return SAFE_DIFFICULTIES.has(value) ? value : 'Unknown';
+}
+
 window.addEventListener('lc_gh_accepted', async (e) => {
   // Prevent duplicate modals if fired multiple times (e.g., from network + DOM fallback)
   if (Date.now() - modalOpenTime < 5000) return;
@@ -182,16 +193,18 @@ window.addEventListener('lc_gh_accepted', async (e) => {
   if (data.detectionEnabled === false) return;
 
   let { lang, code } = e.detail || {};
+  lang = normalizeEventText(lang, 40).toLowerCase();
+  code = normalizeEventText(code, MAX_CODE_LENGTH);
   
   // Fallbacks
-  if (!code || code === 'undefined') code = extractCodeFromDOM();
+  if (!code || code === 'undefined') code = normalizeEventText(extractCodeFromDOM(), MAX_CODE_LENGTH);
   if (!lang || lang === 'undefined') lang = 'python3'; // safe fallback
   if (!code) {
     console.error("LC-GH-Sync: Could not extract code.");
     return;
   }
 
-  const match = window.location.pathname.match(/\/problems\/([^\/]+)/);
+  const match = window.location.pathname.match(/\/problems\/([a-z0-9-]+)/);
   if (!match) return;
   const slug = match[1];
 
@@ -208,9 +221,9 @@ window.addEventListener('lc_gh_accepted', async (e) => {
     lang,
     code,
     slug,
-    title: problemDetails.title,
-    number: problemDetails.questionFrontendId,
-    difficulty: problemDetails.difficulty,
+    title: normalizeEventText(problemDetails.title, 200) || slug,
+    number: normalizeEventText(problemDetails.questionFrontendId, 32) || '?',
+    difficulty: normalizeDifficulty(problemDetails.difficulty),
     date: new Date().toISOString()
   };
 
@@ -224,7 +237,7 @@ function showModal(data) {
   
   const diffEl = document.getElementById('lc-gh-difficulty');
   diffEl.textContent = data.difficulty;
-  diffEl.className = `lc-gh-tag lc-gh-tag-${data.difficulty}`;
+  diffEl.className = `lc-gh-tag lc-gh-tag-${normalizeDifficulty(data.difficulty)}`;
   
   document.getElementById('lc-gh-date').textContent = new Date(data.date).toLocaleDateString();
   

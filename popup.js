@@ -32,7 +32,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function getProblemFolder(problem) {
     const repoUrlFolder = (problem.github_repo_url || '').match(/\/(problems\/[^/?#]+)/);
     if (repoUrlFolder) {
-      return decodeURIComponent(repoUrlFolder[1]);
+      try {
+        return decodeURIComponent(repoUrlFolder[1]);
+      } catch (err) {
+        return repoUrlFolder[1];
+      }
     }
 
     if (problem.slug) {
@@ -147,6 +151,59 @@ document.addEventListener('DOMContentLoaded', () => {
     return escapeHtml(value).replace(/"/g, '&quot;');
   }
 
+  function normalizeRepo(input) {
+    let value = String(input || '').trim();
+    if (/^https?:\/\//i.test(value)) {
+      const url = new URL(value);
+      if (url.hostname !== 'github.com') throw new Error('Repository must be on github.com.');
+      value = url.pathname.replace(/^\/+/, '');
+    }
+    value = value.replace(/\.git$/i, '').replace(/\/+$/, '');
+    if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(value)) {
+      throw new Error('Repository must use owner/repo.');
+    }
+    return value;
+  }
+
+  function normalizeBranch(input) {
+    const value = String(input || 'main').trim();
+    if (
+      !/^[A-Za-z0-9._/-]{1,255}$/.test(value) ||
+      value.startsWith('/') ||
+      value.endsWith('/') ||
+      value.includes('..') ||
+      value.includes('//') ||
+      value.includes('@{') ||
+      value.endsWith('.lock')
+    ) {
+      throw new Error('Branch name contains unsupported characters.');
+    }
+    return value;
+  }
+
+  function normalizeDifficulty(value) {
+    return ['Easy', 'Medium', 'Hard'].includes(value) ? value : 'Unknown';
+  }
+
+  function createProblemLink(url) {
+    const link = document.createElement('a');
+    link.textContent = 'View in Repo';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+
+    try {
+      const parsed = new URL(String(url || ''));
+      if (parsed.protocol === 'https:' && parsed.hostname === 'github.com') {
+        link.href = parsed.href;
+        return link;
+      }
+    } catch (err) {}
+
+    const fallback = document.createElement('span');
+    fallback.textContent = 'Repo link unavailable';
+    return fallback;
+  }
+
   function getKeywordSet(ext) {
     if (ext === 'jsx') return LANGUAGE_KEYWORDS.js;
     if (ext === 'tsx') return LANGUAGE_KEYWORDS.ts;
@@ -257,11 +314,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // Settings logic
   saveSettingsBtn.addEventListener('click', () => {
     const token = ghTokenInput.value.trim();
-    const repo = ghRepoInput.value.trim();
-    const branch = ghBranchInput.value.trim();
+    let repo;
+    let branch;
 
-    if (!token || !repo) {
+    if (!token || !ghRepoInput.value.trim()) {
       settingsStatus.textContent = 'Token and Repo are required.';
+      settingsStatus.className = 'status-error';
+      return;
+    }
+
+    if (!/^(gh[pousr]_|github_pat_)[A-Za-z0-9_]+/.test(token)) {
+      settingsStatus.textContent = 'GitHub token format is not recognized.';
+      settingsStatus.className = 'status-error';
+      return;
+    }
+
+    try {
+      repo = normalizeRepo(ghRepoInput.value);
+      branch = normalizeBranch(ghBranchInput.value);
+    } catch (err) {
+      settingsStatus.textContent = err.message;
       settingsStatus.className = 'status-error';
       return;
     }
@@ -423,33 +495,72 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const date = new Date(p.solved_at).toLocaleDateString();
       
-      div.innerHTML = `
-        <div class="problem-header">
-          <div class="problem-title">
-            <span class="difficulty-dot dot-${p.difficulty}" aria-hidden="true"></span>
-            <span>${p.number}. ${p.title}</span>
-          </div>
-          <div class="difficulty diff-${p.difficulty}">${p.difficulty}</div>
-        </div>
-        <div class="problem-actions">
-          <span>${date}</span>
-          <div class="actions-right">
-            <a href="${p.github_repo_url}" target="_blank">View in Repo</a>
-            <button class="trash-btn" title="Delete Problem" data-number="${p.number}">🗑️</button>
-          </div>
-        </div>
-        <div class="inline-delete" aria-live="polite">
-          <div class="inline-delete-copy">
-            <strong>Delete this solution?</strong>
-            <span>This removes the saved problem folder from GitHub and your log.</span>
-          </div>
-          <div class="inline-delete-actions">
-            <button class="secondary-btn inline-cancel-btn" type="button">Cancel</button>
-            <button class="danger-btn inline-delete-btn" type="button">Delete</button>
-          </div>
-          <div class="inline-delete-status"></div>
-        </div>
-      `;
+      const difficulty = normalizeDifficulty(p.difficulty);
+      const header = document.createElement('div');
+      header.className = 'problem-header';
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'problem-title';
+
+      const dot = document.createElement('span');
+      dot.className = `difficulty-dot dot-${difficulty}`;
+      dot.setAttribute('aria-hidden', 'true');
+
+      const title = document.createElement('span');
+      title.textContent = `${p.number}. ${p.title || 'Untitled Problem'}`;
+      titleWrap.append(dot, title);
+
+      const difficultyEl = document.createElement('div');
+      difficultyEl.className = `difficulty diff-${difficulty}`;
+      difficultyEl.textContent = difficulty;
+      header.append(titleWrap, difficultyEl);
+
+      const actions = document.createElement('div');
+      actions.className = 'problem-actions';
+
+      const dateEl = document.createElement('span');
+      dateEl.textContent = date;
+
+      const actionsRight = document.createElement('div');
+      actionsRight.className = 'actions-right';
+      actionsRight.appendChild(createProblemLink(p.github_repo_url));
+
+      const trashButton = document.createElement('button');
+      trashButton.className = 'trash-btn';
+      trashButton.title = 'Delete Problem';
+      trashButton.dataset.number = String(p.number || '');
+      trashButton.textContent = 'Delete';
+      actionsRight.appendChild(trashButton);
+      actions.append(dateEl, actionsRight);
+
+      const inlineDelete = document.createElement('div');
+      inlineDelete.className = 'inline-delete';
+      inlineDelete.setAttribute('aria-live', 'polite');
+
+      const inlineCopy = document.createElement('div');
+      inlineCopy.className = 'inline-delete-copy';
+      const inlineTitle = document.createElement('strong');
+      inlineTitle.textContent = 'Delete this solution?';
+      const inlineText = document.createElement('span');
+      inlineText.textContent = 'This removes the saved problem folder from GitHub and your log.';
+      inlineCopy.append(inlineTitle, inlineText);
+
+      const inlineActions = document.createElement('div');
+      inlineActions.className = 'inline-delete-actions';
+      const inlineCancelButton = document.createElement('button');
+      inlineCancelButton.className = 'secondary-btn inline-cancel-btn';
+      inlineCancelButton.type = 'button';
+      inlineCancelButton.textContent = 'Cancel';
+      const inlineDeleteButton = document.createElement('button');
+      inlineDeleteButton.className = 'danger-btn inline-delete-btn';
+      inlineDeleteButton.type = 'button';
+      inlineDeleteButton.textContent = 'Delete';
+      inlineActions.append(inlineCancelButton, inlineDeleteButton);
+
+      const inlineDeleteStatusEl = document.createElement('div');
+      inlineDeleteStatusEl.className = 'inline-delete-status';
+      inlineDelete.append(inlineCopy, inlineActions, inlineDeleteStatusEl);
+
+      div.append(header, actions, inlineDelete);
       
       // View Notes & Code logic
       div.addEventListener('click', async (e) => {
@@ -478,14 +589,18 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        let { token, repo, branch = 'main' } = data.settings;
-        repo = repo.replace('https://github.com/', '').replace('http://github.com/', '').replace(/\.git$/, '').replace(/\/$/, '').trim();
-        
+        const { token } = data.settings;
+        const repo = normalizeRepo(data.settings.repo);
+        const branch = normalizeBranch(data.settings.branch);
         const folderName = getProblemFolder(p);
 
         try {
-          const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${branch}`, {
-            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+          const res = await fetch(`https://api.github.com/repos/${repo}/contents/${folderName}?ref=${encodeURIComponent(branch)}`, {
+            headers: {
+              'Authorization': `Bearer ${String(token).trim()}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'X-GitHub-Api-Version': '2022-11-28'
+            }
           });
           
           if (!res.ok) {
@@ -518,7 +633,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
           // Fetch file content
           const fileRes = await fetch(latestFile.url, {
-            headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+            headers: {
+              'Authorization': `Bearer ${String(token).trim()}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'X-GitHub-Api-Version': '2022-11-28'
+            }
           });
           
           if (!fileRes.ok) throw new Error(`HTTP ${fileRes.status}`);
@@ -536,11 +655,10 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       
       // Bind delete button
-      const trashBtn = div.querySelector('.trash-btn');
-      const inlineDelete = div.querySelector('.inline-delete');
-      const inlineCancelBtn = div.querySelector('.inline-cancel-btn');
-      const inlineDeleteBtn = div.querySelector('.inline-delete-btn');
-      const inlineDeleteStatus = div.querySelector('.inline-delete-status');
+      const trashBtn = trashButton;
+      const inlineCancelBtn = inlineCancelButton;
+      const inlineDeleteBtn = inlineDeleteButton;
+      const inlineDeleteStatus = inlineDeleteStatusEl;
 
       trashBtn.addEventListener('click', (e) => {
         e.stopPropagation();

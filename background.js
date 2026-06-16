@@ -22,7 +22,17 @@ const LANG_TO_EXT = {
   'elixir': 'ex',
 };
 
+const MAX_CODE_LENGTH = 512 * 1024;
+const MAX_NOTES_LENGTH = 64 * 1024;
+const MAX_TITLE_LENGTH = 200;
+const SAFE_DIFFICULTIES = new Set(['Easy', 'Medium', 'Hard', 'Unknown']);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!isAllowedMessage(message, sender)) {
+    sendResponse({ success: false, error: 'Blocked untrusted extension message.' });
+    return false;
+  }
+
   if (message.type === 'COMMIT_SOLUTION') {
     handleCommit(message.payload).then(sendResponse);
     return true; // Keep message channel open for async response
@@ -32,6 +42,136 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+function isAllowedMessage(message, sender) {
+  if (!message || typeof message !== 'object' || sender.id !== chrome.runtime.id) {
+    return false;
+  }
+
+  if (message.type === 'COMMIT_SOLUTION') {
+    return typeof sender.url === 'string' && sender.url.startsWith('https://leetcode.com/');
+  }
+
+  if (message.type === 'DELETE_SOLUTION') {
+    return !sender.url || sender.url.startsWith(chrome.runtime.getURL(''));
+  }
+
+  return false;
+}
+
+function normalizeRepo(input) {
+  let value = String(input || '').trim();
+
+  if (/^https?:\/\//i.test(value)) {
+    const url = new URL(value);
+    if (url.hostname !== 'github.com') {
+      throw new Error('Repository URL must be hosted on github.com.');
+    }
+    value = url.pathname.replace(/^\/+/, '');
+  }
+
+  value = value.replace(/\.git$/i, '').replace(/\/+$/, '');
+
+  if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(value)) {
+    throw new Error('Repository must use the owner/repo format.');
+  }
+
+  return value;
+}
+
+function normalizeBranch(input) {
+  const value = String(input || 'main').trim();
+
+  if (
+    !/^[A-Za-z0-9._/-]{1,255}$/.test(value) ||
+    value.startsWith('/') ||
+    value.endsWith('/') ||
+    value.includes('..') ||
+    value.includes('//') ||
+    value.includes('@{') ||
+    value.endsWith('.lock')
+  ) {
+    throw new Error('Branch name contains unsupported characters.');
+  }
+
+  return value;
+}
+
+function normalizeProblemSlug(input) {
+  const value = String(input || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,120}$/.test(value)) {
+    throw new Error('Invalid LeetCode problem slug.');
+  }
+  return value;
+}
+
+function normalizeProblemNumber(input) {
+  const value = String(input || '').trim();
+  if (!/^[A-Za-z0-9?.-]{1,32}$/.test(value)) {
+    throw new Error('Invalid LeetCode problem number.');
+  }
+  return value;
+}
+
+function normalizeDifficulty(input) {
+  const value = String(input || 'Unknown').trim();
+  return SAFE_DIFFICULTIES.has(value) ? value : 'Unknown';
+}
+
+function normalizeLimitedText(input, fieldName, maxLength) {
+  const value = String(input || '').trim();
+  if (value.length > maxLength) {
+    throw new Error(`${fieldName} is too large.`);
+  }
+  return value;
+}
+
+function normalizeSubmissionPayload(data) {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Missing submission payload.');
+  }
+
+  const lang = String(data.lang || '').trim().toLowerCase();
+  const ext = LANG_TO_EXT[lang] || null;
+  if (!ext) {
+    throw new Error('Unsupported solution language.');
+  }
+
+  const code = normalizeLimitedText(data.code, 'Solution code', MAX_CODE_LENGTH);
+  if (!code) {
+    throw new Error('Solution code is empty.');
+  }
+
+  const slug = normalizeProblemSlug(data.slug);
+  const number = normalizeProblemNumber(data.number);
+  const title = normalizeLimitedText(data.title, 'Problem title', MAX_TITLE_LENGTH) || slug;
+  const difficulty = normalizeDifficulty(data.difficulty);
+  const date = Number.isNaN(Date.parse(data.date)) ? new Date().toISOString() : new Date(data.date).toISOString();
+  const notes = normalizeLimitedText(data.notes, 'Notes', MAX_NOTES_LENGTH);
+
+  return { lang, ext, code, slug, title, number, difficulty, date, notes };
+}
+
+function normalizeFolderName(input, number, slug) {
+  const fallback = `problems/${number}-${slug}`;
+  const value = String(input || fallback).trim();
+
+  if (!/^problems\/[A-Za-z0-9?.-]+-[a-z0-9-]+$/.test(value) || value.includes('..')) {
+    throw new Error('Invalid problem folder path.');
+  }
+
+  return value;
+}
+
+function normalizeSolutionFile(input) {
+  if (!input) return null;
+
+  const value = String(input).trim();
+  if (!/^solution(?:_\d{1,3})?\.[A-Za-z0-9]{1,10}$/.test(value)) {
+    throw new Error('Invalid solution file name.');
+  }
+
+  return value;
+}
 
 async function handleCommit(data) {
   try {
@@ -40,22 +180,17 @@ async function handleCommit(data) {
       return { success: false, error: 'GitHub Token or Repo not configured.' };
     }
 
-    let { token, repo, branch = 'main' } = settings;
-    // Sanitize repo string in case user pasted the full URL or .git
-    repo = repo.replace('https://github.com/', '')
-               .replace('http://github.com/', '')
-               .replace(/\.git$/, '')
-               .replace(/\/$/, '')
-               .trim();
+    let { token } = settings;
+    const repo = normalizeRepo(settings.repo);
+    const branch = normalizeBranch(settings.branch);
     
-    const { lang, code, slug, title, number, difficulty, date, notes } = data;
+    const { lang, ext, code, slug, title, number, difficulty, date, notes } = normalizeSubmissionPayload(data);
     
-    const ext = LANG_TO_EXT[lang] || 'txt';
     const folderName = `problems/${number}-${slug}`;
     
     // 1. Check existing files in the directory to handle multiple solutions
     let solutionFileName = `solution.${ext}`;
-    const existingFiles = await fetchGitHubAPI(`/repos/${repo}/contents/${folderName}?ref=${branch}`, token);
+    const existingFiles = await fetchGitHubAPI(`/repos/${repo}/contents/${folderName}?ref=${encodeURIComponent(branch)}`, token);
     
     if (Array.isArray(existingFiles)) {
       // Directory exists, check for existing solution files
@@ -145,9 +280,19 @@ async function handleCommit(data) {
 }
 
 async function fetchGitHubAPI(endpoint, token, method = 'GET', body = null) {
+  if (typeof endpoint !== 'string' || !endpoint.startsWith('/repos/') || endpoint.includes('://')) {
+    throw new Error('Blocked invalid GitHub API endpoint.');
+  }
+
+  const authToken = String(token || '').trim();
+  if (!/^(gh[pousr]_|github_pat_)[A-Za-z0-9_]+/.test(authToken)) {
+    throw new Error('GitHub token format is not recognized.');
+  }
+
   const headers = {
-    'Authorization': `token ${token}`,
+    'Authorization': `Bearer ${authToken}`,
     'Accept': 'application/vnd.github.v3+json',
+    'X-GitHub-Api-Version': '2022-11-28',
     'Content-Type': 'application/json'
   };
   
@@ -207,15 +352,14 @@ async function handleDeleteSolution(data) {
       return { success: false, error: 'GitHub Token or Repo not configured.' };
     }
 
-    let { token, repo, branch = 'main' } = settings;
-    repo = repo.replace('https://github.com/', '')
-               .replace('http://github.com/', '')
-               .replace(/\.git$/, '')
-               .replace(/\/$/, '')
-               .trim();
+    let { token } = settings;
+    const repo = normalizeRepo(settings.repo);
+    const branch = normalizeBranch(settings.branch);
 
-    const { number, slug, file } = data;
-    const folderName = data.folderName || `problems/${number}-${slug}`;
+    const number = normalizeProblemNumber(data && data.number);
+    const slug = normalizeProblemSlug(data && data.slug);
+    const file = normalizeSolutionFile(data && data.file);
+    const folderName = normalizeFolderName(data && data.folderName, number, slug);
 
     // 1. Get Ref
     let refData;
@@ -243,7 +387,7 @@ async function handleDeleteSolution(data) {
       });
     } else {
       // Specific file deletion + renaming shift
-      const existingFiles = await fetchGitHubAPI(`/repos/${repo}/contents/${folderName}?ref=${branch}`, token);
+      const existingFiles = await fetchGitHubAPI(`/repos/${repo}/contents/${folderName}?ref=${encodeURIComponent(branch)}`, token);
       if (!Array.isArray(existingFiles)) throw new Error("Folder not found.");
       
       const solutionFiles = existingFiles.filter(f => f.name.startsWith('solution') && f.name.match(/\.[a-zA-Z0-9]+$/));
