@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CodeNebula</title>
   <link rel="stylesheet" href="popup.css">
 </head>
@@ -9,26 +10,39 @@
   <div id="header">
     <div class="brand">
       <img src="assets/icon-32.png" alt="" class="brand-icon">
-      <h1>CodeNebula</h1>
+      <div class="brand-copy">
+        <h1>CodeNebula</h1>
+        <span>Your solution library</span>
+      </div>
     </div>
     <div class="header-controls">
-      <label class="switch" title="Toggle Detection">
+      <label class="switch" title="Toggle automatic detection">
         <input type="checkbox" id="toggleDetection" checked>
-        <span class="slider round"></span>
+        <span class="slider round" aria-hidden="true"></span>
+        <span class="sr-only">Automatic detection</span>
       </label>
-      <button id="settingsBtn" title="Settings">&#9881;</button>
+      <button id="settingsBtn" type="button" title="Settings" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.42 1.42-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2v-.08A1.7 1.7 0 0 0 12.35 18a1.7 1.7 0 0 0-1.88.34l-.06.06L9 16.98l.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.03H7.8v-2h.08A1.7 1.7 0 0 0 9.4 11a1.7 1.7 0 0 0-.34-1.88L9 9.06 10.42 7.64l.06.06A1.7 1.7 0 0 0 12.36 8a1.7 1.7 0 0 0 1.03-1.56V6.4h2v.08A1.7 1.7 0 0 0 16.45 8a1.7 1.7 0 0 0 1.88-.34l.06-.06L19.8 9l-.06.06A1.7 1.7 0 0 0 19.4 11a1.7 1.7 0 0 0 1.56 1.03H21v2h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+      </button>
     </div>
   </div>
 
   <div id="homepageView" class="view active">
     <div class="toolbar">
-      <input type="text" id="searchInput" placeholder="Search problems...">
+      <div class="search-field">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <input type="search" id="searchInput" placeholder="Search solutions" aria-label="Search solutions">
+      </div>
       <select id="sortSelect">
         <option value="dateDesc">Newest First</option>
         <option value="dateAsc">Oldest First</option>
         <option value="difficulty">Difficulty</option>
         <option value="number">Problem Number</option>
       </select>
+    </div>
+    <div class="list-heading">
+      <span>Recent solutions</span>
+      <span id="problemCount" aria-live="polite"></span>
     </div>
     <div id="problemList">
       <!-- Problem items injected here -->
