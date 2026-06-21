@@ -317,6 +317,7 @@ button:focus-visible {
 }
 
 .problem-item {
+  flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 13px 14px 11px;
