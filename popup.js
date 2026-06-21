@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchInput = document.getElementById('searchInput');
   const sortSelect = document.getElementById('sortSelect');
   const problemList = document.getElementById('problemList');
+  const problemCount = document.getElementById('problemCount');
   
   // Notes View Elements
   const notesView = document.getElementById('notesView');
@@ -187,7 +188,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function createProblemLink(url) {
     const link = document.createElement('a');
-    link.textContent = 'View in Repo';
+    link.textContent = 'GitHub';
+    link.title = 'View solution on GitHub';
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
 
@@ -200,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {}
 
     const fallback = document.createElement('span');
-    fallback.textContent = 'Repo link unavailable';
+    fallback.textContent = 'No link';
     return fallback;
   }
 
@@ -288,10 +290,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Problems
-    if (data.syncedProblems && data.syncedProblems.length > 0) {
-      problems = data.syncedProblems;
-      renderProblems();
-    }
+    problems = data.syncedProblems || [];
+    renderProblems();
   });
 
   // Navigation
@@ -431,6 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderProblems() {
     if (problems.length === 0) {
+      problemCount.textContent = '0 saved';
       problemList.innerHTML = '<div class="empty-state">No problems synced yet. Go solve some on LeetCode!</div>';
       return;
     }
@@ -484,14 +485,21 @@ document.addEventListener('DOMContentLoaded', () => {
     problemList.innerHTML = '';
     
     if (filtered.length === 0) {
+      problemCount.textContent = '0 results';
       problemList.innerHTML = '<div class="empty-state">No matching problems found.</div>';
       return;
     }
+
+    problemCount.textContent = searchTerm
+      ? `${filtered.length} result${filtered.length === 1 ? '' : 's'}`
+      : `${filtered.length} saved`;
 
     filtered.forEach(item => {
       const p = item.problem;
       const div = document.createElement('div');
       div.className = 'problem-item';
+      div.tabIndex = 0;
+      div.setAttribute('role', 'button');
       
       const date = new Date(p.solved_at).toLocaleDateString();
       
@@ -527,8 +535,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const trashButton = document.createElement('button');
       trashButton.className = 'trash-btn';
       trashButton.title = 'Delete Problem';
+      trashButton.setAttribute('aria-label', `Delete ${p.title || 'problem'}`);
       trashButton.dataset.number = String(p.number || '');
-      trashButton.textContent = 'Delete';
+      trashButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg>';
       actionsRight.appendChild(trashButton);
       actions.append(dateEl, actionsRight);
 
@@ -651,6 +660,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
           showCodeMessage(`Error fetching GitHub data: ${err.message}`);
           codeLanguage.textContent = 'ERROR';
+        }
+      });
+
+      div.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === div) {
+          e.preventDefault();
+          div.click();
         }
       });
       
