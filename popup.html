@@ -51,7 +51,11 @@
   </div>
 
   <div id="settingsView" class="view">
-    <h2>Settings</h2>
+    <div class="view-header">
+      <span>Preferences</span>
+      <h2>GitHub connection</h2>
+      <p>Choose where CodeNebula saves your accepted solutions.</p>
+    </div>
     <div class="form-group">
       <label for="ghToken">GitHub Personal Access Token</label>
       <input type="password" id="ghToken" placeholder="ghp_xxxxxxxx">
@@ -93,9 +97,9 @@
   </div>
 
   <div id="notesView" class="view">
-    <div class="toolbar" style="margin-bottom: 12px;">
-      <button id="backFromNotesBtn" class="secondary-btn icon-btn" style="flex: 0 0 auto;" title="Back" aria-label="Back">&larr;</button>
-      <h2 id="notesProblemTitle" style="margin: 0; font-size: 15px; display: flex; align-items: center; margin-left: 8px;">Problem Notes</h2>
+    <div class="toolbar notes-toolbar">
+      <button id="backFromNotesBtn" class="secondary-btn icon-btn" title="Back" aria-label="Back">&larr;</button>
+      <h2 id="notesProblemTitle">Problem Notes</h2>
     </div>
     
     <div id="codeContainer" class="code-container" style="display: none;">
